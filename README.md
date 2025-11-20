@@ -4,7 +4,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/status-research%20prototype-orange.svg)](#)
-[![License](https://img.shields.io/badge/license-TBD-lightgrey.svg)](#license)
+[![License](https://img.shields.io/badge/license-Apache_2.0-lightgrey.svg)](#license)
 
 **Synthetic Path Maker** is a lightweight generator of synthetic financial time series.
 
