@@ -34,6 +34,7 @@ CSV (OHLCV) ──▶ log-price derivative ──▶ directional weights ──�
 - [Repository Structure](#repository-structure)
 - [Methodology (Short)](#methodology-short)
 - [Implementation Notes vs. Paper](#implementation-notes-vs-paper)
+- [Seed Validation(starting point)](#Seed-validation)
 - [Roadmap](#roadmap)
 - [License & Citation](#license--citation)
 
@@ -323,6 +324,21 @@ These design choices keep the code path simple, deterministic and easy to audit,
 the components needed for more sophisticated experiments.
 
 ---
+
+### Seed validation
+
+To assess the stability of the generator with respect to randomness, we perform a simple **seed validation** experiment. For a fixed CSV and fixed hyperparameters, we generate many synthetic paths by varying only the pseudo-random seed. All paths start from the same historical point, and we:
+
+- compute time-wise empirical mean and standard deviation of the (shifted) price across runs,
+- inspect the ensemble plot of simulated paths (`<prefix>_paths.png`),
+- analyse the distribution of the terminal value \(X_T\) saved in `<prefix>_final_samples.csv`.
+
+This procedure verifies that the implementation uses the designed index distribution \(p_i\) in a numerically stable way and that the induced dispersion of synthetic paths remains controlled and consistent with the intended behaviour of the model.  
+The figure below shows one such seed validation experiment, where the original series (black) is overlaid with all simulated paths (coloured).
+
+![Seed validation example](validation_SPX_paths.png)
+
+
 
 ## Roadmap
 
