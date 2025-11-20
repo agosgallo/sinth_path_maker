@@ -343,6 +343,8 @@ These diagnostics allow a direct quantitative comparison between the empirical d
 
 ![Seed validation example](validation_SPX_paths.png)
 
+- **What's the point of calculating this stats?** Whith this I basically want to take a real Graph of the same Asset (not the starting necessary since could not have the bias desired), and confront my MetaMetrics to the Real. It seems that the Generator manages to resamble the reality.
+
 
 
 ## Roadmap
@@ -360,11 +362,7 @@ Potential extensions that fit naturally into the current design:
   - or 1–to–1 matching via `match_samples_to_nodes`.
 
 - **Diagnostics and evaluation**  
-  Add notebooks comparing original vs synthetic series in terms of:
-  - return distributions,
-  - autocorrelations,
-  - volatility clustering,
-  - regime duration statistics.
+Confrony the MetaMetrics with real ones, given the right Graphics. This will lead to usability of the model.
 
 ---
 
