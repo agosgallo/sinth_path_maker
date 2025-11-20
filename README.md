@@ -231,7 +231,8 @@ Given a price series \(P_t\), `main.py` constructs:
 
 4. **Triangular smoothing**  
 
-   A light local smoothing with parameter \(ho \in [0,1]\) blends each weight with its neighbours.
+   A light local smoothing with parameter \(
+ho \in [0,1]\) blends each weight with its neighbours.
 
 5. **Normalisation**  
 
@@ -346,13 +347,9 @@ Potential extensions that fit naturally into the current design:
 
 ---
 
+
 ## License & Citation
 
-Specify your license in a `LICENSE` file (e.g. MIT, Apache-2.0) and reference it here.
-
-If you use this code or the underlying methodology in research or production, please cite:
-
 > *Distribution Maker: From Price-Driven Weights to Synthetic Market Paths* (2025).  
-> Authors, institution, working paper.
+> Agostino Gallo, working paper.
 
-(Replace with the final bibliographic details once available.)
