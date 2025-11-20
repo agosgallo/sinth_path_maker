@@ -1,106 +1,358 @@
-# SINTHETIC PATH MAKER
-This small pipline is just the start of a bigger project. The main aim is to generate METADATA from real financial datas. This is a very primitive version and it just needs as a test.
-Validation in on it's way, but Heuristically it seems as a very good Idea to train ML on a specific ASSET rather than the mostly common used "general data" wich sometimes makes our model not proper for the specific ASSET behaviour. In this very first Version of SINTHETIC PATH MAKER there is just price in the output column, but this can easily change by futute new FEATURE generation. Nevertheless this outputs can have real world application by generating some more columns based on the Price (SMA20,SMA50, realized volatility and more).
+# Synthetic Path Maker
 
+> From **price-driven weights** to **synthetic market paths**
 
-This repository implements the pipeline described in  
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Status](https://img.shields.io/badge/status-research%20prototype-orange.svg)](#)
+[![License](https://img.shields.io/badge/license-TBD-lightgrey.svg)](#license)
 
-**“SINTETIC PATH MAKER: From Price-Driven Weights to Synthetic Market Paths” (2025)**.
+**Synthetic Path Maker** is a lightweight generator of synthetic financial time series.
 
-The goal is to generate synthetic financial time series guided by the local dynamics of a reference price.  
-Given a price series \(P_t\), the code builds a discrete sampling distribution on time indices that emphasizes
-zones of strong upward or downward movement, and uses it to propagate returns into realistic synthetic paths
-for price and additional features (e.g. volume).
+Given a historical price series \(P_t\), it:
 
----
+1. computes a smoothed derivative of \(\log P_t\),
+2. builds **directional weights** on time indices,
+3. normalises them into a discrete sampling distribution \(p_i\),
+4. and propagates historical returns along sampled indices to obtain **synthetic price paths**.
 
-## Overview
+The implementation follows the methodology of the working paper  
+“*Distribution Maker: From Price-Driven Weights to Synthetic Market Paths*” (2025),  
+with a few engineering refinements for real-world CSV data.
 
-The pipeline is lightweight, fully non-parametric, and designed to be:
-
-- **Directional**: sampling probabilities depend on the sign and magnitude of the smoothed derivative of \(\log P\);
-- **Interpretable**: every step (weights, empirical CDF, inverse transform) has a clear probabilistic meaning;
-- **Reproducible**: seeds and configuration parameters fully determine each synthetic run;
-- **Extensible**: the same machinery can be applied to alternative signals and multiple assets.
-
-Typical use cases include:
-
-- scenario exploration and stress testing;
-- generating longer paths from short historical series;
-- probing strategy robustness under controlled bullish/bearish biases.
+```text
+CSV (OHLCV) ──▶ log-price derivative ──▶ directional weights ──▶ index sampling ──▶ synthetic path
+```
 
 ---
 
-## Method in a Nutshell
+## Table of Contents
 
-Given a price series \(P_t\), \(t = 0, \dots, N-1\):
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [CLI Reference](#cli-reference)
+- [Repository Structure](#repository-structure)
+- [Methodology (Short)](#methodology-short)
+- [Implementation Notes vs. Paper](#implementation-notes-vs-paper)
+- [Roadmap](#roadmap)
+- [License & Citation](#license--citation)
 
-1. **Smooth derivative of log-price**
+---
 
-   - Define an equispaced index grid \(y_i = y_0 + i\,\Delta y\).
-   - Compute a smoothed derivative \(d_i \approx \frac{df}{dy}(y_i)\) of \(f_i = \log P_i\) using:
-     - a Savitzky–Golay (SG) filter with user-selected `window` and `polyorder`, or  
-     - a moving-average + finite-difference fallback.
+## Features
 
-2. **Directional, nonnegative weights**
+- **Directional weighting of market regimes**  
+  Smoothed derivative of \(\log P_t\) is split into up/down components and converted into weights
+  using \((lpha, eta, \gamma)\), giving explicit control over bullish vs. bearish emphasis.
 
-   - Split the derivative into positive/negative components  
-     \(u_i = \max(d_i, 0)\), \(v_i = \max(-d_i, 0)\).
-   - Build raw weights
-     \[
-     s_i = \alpha\,u_i^\gamma + \beta\,v_i^\gamma + \varepsilon,\quad \gamma \ge 1,\ \alpha,\beta>0.
-     \]
-   - Apply a light triangular smoothing with parameter \(\rho \in [0,1]\), obtaining \(\tilde{s}\).
+- **Robust equispaced CDF + inverse**  
+  `EquispacedPiecewiseConstantCDF` represents a piecewise-constant density on an equispaced grid
+  and exposes a numerically stable CDF and inverse CDF (with correct handling of zero-mass plateaux).
 
-3. **Empirical CDF on an equispaced grid**
+- **Synthetic path generator**  
+  `build_synthetic_path` builds synthetic sequences by re-using historical returns under the designed
+  index distribution, starting from a real observed point.
 
-   - On the same grid \(\{y_i\}\), treat each cell as having mass proportional to \(\tilde{s}_i\).
-   - Construct a **piecewise-constant density** and its corresponding CDF \(F(x)\), which is linear within each cell.
-   - Build a **numerically robust inverse** \(F^{-1}(u)\) that handles zero-mass plateaus by skipping to the next positive-mass index.
+- **CSV-ready CLI**  
+  `main.py` takes standard OHLCV-style CSV files, detects date and price columns, enforces positivity
+  for log-transforms, and saves both plots and synthetic paths to disk.
 
-4. **Index sampling and synthetic path construction**
+- **Modular design**  
+  The code is split into small, self-contained modules: weighting, CDF/inverse, sampling, path
+  construction, plotting, and I/O.
 
-   - Draw indices \(i_1, \dots, i_{T-1}\) either:
-     - directly from the discrete probabilities \(p_i = \tilde{s}_i / \sum_k \tilde{s}_k\), or
-     - via inverse-CDF sampling using \(F^{-1}\) for improved control and stratification.
-   - Compute price returns
-     \[
-     r^{(P)}_t = \frac{P_t - P_{t-1}}{\max(P_{t-1}, 10^{-12})},\quad t\ge1.
-     \]
-   - Propagate returns into synthetic paths using one of two policies:
-     - **Price-only returns** (`use_price_only = True`): all features evolve using the sampled price return.
-     - **Feature-specific returns** (`use_price_only = False`): each feature uses its own historical return at the sampled index.
+---
 
-This yields synthetic trajectories that inherit the directional structure of the original series while remaining controllable through a small set of parameters.
+## Installation
+
+Clone the repository and install the minimal dependencies:
+
+```bash
+git clone https://github.com/<your-user>/synthetic-path-maker.git
+cd synthetic-path-maker
+
+pip install numpy pandas matplotlib
+# optional but recommended: Savitzky–Golay smoothing
+pip install scipy
+```
+
+---
+
+## Quick Start
+
+Assume you have a CSV `data/AAPL.csv` with at least a `Date` column and a `Close` column.
+
+Run:
+
+```bash
+python main.py   --csv data/AAPL.csv   --price-col Close   --seed 112
+```
+
+This will:
+
+1. create a new run directory under `plot/` (e.g. `plot/plot1/`),
+2. load and clean the price series,
+3. compute directional weights and discrete probabilities \(p_i\),
+4. instantiate the equispaced CDF (for diagnostics),
+5. generate a synthetic price path of length \(N\) (same as input),
+6. save:
+   - `01_cdf.png` – empirical CDF plot of the discrete distribution,
+   - `02_price_initial.png` – original price series,
+   - `price_synthetic.png` – original vs synthetic price,
+   - `synth_path.csv` – synthetic price series.
+
+To pick a random CSV from a directory:
+
+```bash
+python main.py   --csv-dir data/   --seed 112
+```
+
+> For all available options, run:
+>
+> ```bash
+> python main.py --help
+> ```
+
+---
+
+## CLI Reference
+
+`main.py` exposes the following arguments (via `argparse`):
+
+```text
+--csv        Path to a single CSV file (overrides --csv-dir).
+--csv-dir    Directory containing CSV files; one will be chosen at random.
+
+--date-col   Date column name (e.g. Date, Datetime).
+             If omitted, common names are auto-detected.
+
+--price-col  Price column name (e.g. Close, Adj Close, Price).
+             If omitted, a small set of candidates is tried.
+
+--seed       Random seed (used for CSV choice and path generation).
+
+--window     Savitzky–Golay window size.
+--polyorder  Savitzky–Golay polynomial order.
+
+--gamma      Exponent in the weight formula (≥ 1).
+--alpha      Weight for upward slopes (bullish intensity).
+--beta       Weight for downward slopes (bearish intensity).
+--rho        Triangular smoothing parameter for weights (0 ≤ ρ ≤ 1).
+```
+
+Minimal working example:
+
+```bash
+python main.py   --csv data/example.csv   --seed 123   --window 31   --polyorder 3   --gamma 1.5   --alpha 2.0   --beta 0.2   --rho 0.1
+```
 
 ---
 
 ## Repository Structure
 
-A natural organization (reflected by the paper) is:
-
-- **Weighting module**  
-  Derivative estimation (Savitzky–Golay or fallback), construction of directional weights \(s_i\), and triangular smoothing.
-- **CDF / inverse module**  
-  Empirical piecewise-constant CDF on an equispaced grid and a robust inverse-transform sampler.
-- **Sampling utilities**  
-  Helpers for drawing indices (and optionally multinomial counts) from the designed distribution.
-- **Synthetic path builder**  
-  Logic to propagate returns, handle `use_price_only` vs feature-specific evolution, and choose the starting index.
-- **I/O and plotting**  
-  Loading CSV price/feature series, exporting synthetic paths, and generating figures (CDF, original vs synthetic price, etc.).
-
-You can mirror this in your own `src/` tree, for example:
-
 ```text
-src/
-  weighting.py
-  cdf_inverse.py
-  sampling.py
-  synthetic_paths.py
-  io_utils.py
+.
+├── main.py                 # CLI entry point and end-to-end workflow
+├── weights.py              # smoothed log-price derivative + directional weights
+├── CDF_and_inverse.py      # equispaced piecewise-constant CDF + inverse CDF
+├── append_tuples.py        # synthetic path construction + original vs synthetic plots
+├── sampling.py             # generic index sampling (multinomial) [optional utility]
+├── one_to_one.py           # monotone 1–to–1 matching between nodes and samples
+└── plot/                   # auto-created run directories: plot1/, plot2/, ...
+```
 
-In very generalistic terms it takes
-In order to use some csv you need to launch this command in bash
-python3 src/main.py --csv ../SPX_randblock_1.csv --price-col Close --date-col Date
-# in future i'm programming a new version with other variables
+Module roles:
+
+- [`weights.py`](./weights.py)  
+  Implements `compute_weights_precise(y, f, ...)`, which returns:
+  - `s`: non-negative weights on nodes \(y_i\),
+  - `p`: discrete probabilities \(p_i = s_i / \sum_j s_j\),
+  plus auxiliary diagnostic arrays.
+
+- [`CDF_and_inverse.py`](./CDF_and_inverse.py)  
+  Implements `EquispacedPiecewiseConstantCDF(y, s)`, which exposes:
+  - `.cdf(x)` – CDF at scalar or array `x`,
+  - `.finv(u)` – inverse CDF for `u ∈ (0,1)`,
+  - `.sample_stratified(N, seed)` – optional stratified sampling.
+
+- [`append_tuples.py`](./append_tuples.py)  
+  Implements:
+  - `build_synthetic_path(payload, p, n_periodi, start_index=None, use_price_only=True, seed=None)`,
+  - `save_plots_orig_vs_synth(payload, synth, outdir, title)`.
+
+- [`sampling.py`](./sampling.py)  
+  Implements `sample_indices_with_replacement(s, M, seed=None)` for direct multinomial sampling
+  given non-normalised weights `s`. Not used by `main.py`, but available if you want to experiment.
+
+- [`one_to_one.py`](./one_to_one.py)  
+  Implements `match_samples_to_nodes(y, X)` for monotone 1–to–1 pairing between grid nodes and
+  sampled locations.
+
+---
+
+## Methodology (Short)
+
+### 1. Directional weights on an equispaced grid
+
+Given a price series \(P_t\), `main.py` constructs:
+
+- an equispaced index grid \(y_i\), \(i = 0, \dots, N-1\),
+- the log-price series \(f_i = \log P_i\).
+
+`compute_weights_precise(y, f, ...)` proceeds as follows:
+
+1. **Smoothed derivative**  
+
+   A derivative \(d_i pprox rac{df}{dy}(y_i)\) is obtained by:
+
+   - applying a Savitzky–Golay filter with window `window` and polynomial order `polyorder`
+     (or a moving-average + finite-difference fallback), enforcing:
+       - odd window,
+       - window > `polyorder`,
+       - window ≤ \(N-1\).
+
+2. **Directional decomposition**  
+
+   Upward and downward components:
+
+   \[
+   u_i = \max(d_i, 0), \qquad v_i = \max(-d_i, 0).
+   \]
+
+3. **Raw weights**  
+
+   For each index \(i\):
+
+   \[
+   s_i = lpha\,u_i^\gamma + eta\,v_i^\gamma + arepsilon, \quad \gamma \ge 1,\ lpha,eta > 0,
+   \]
+
+   with a small \(arepsilon\) to avoid the all-zero case.
+
+4. **Triangular smoothing**  
+
+   A light local smoothing with parameter \(ho \in [0,1]\) blends each weight with its neighbours.
+
+5. **Normalisation**  
+
+   The discrete probabilities used by the generator are:
+
+   \[
+   p_i = rac{s_i}{\sum_j s_j}.
+   \]
+
+### 2. Equispaced CDF and inverse
+
+`EquispacedPiecewiseConstantCDF(y, s)` interprets:
+
+- `y` as an equispaced grid \(y_i\),
+- `s` as non-negative cell weights.
+
+It defines a piecewise-constant density on cells:
+
+\[
+[y_i - 	frac{1}{2}\Delta y,\ y_i + 	frac{1}{2}\Delta y),
+\]
+
+and exposes a numerically stable CDF and inverse CDF, including correct behaviour on flat regions
+(where multiple consecutive weights are zero).
+
+In the current CLI, this object is instantiated for diagnostics and potential advanced use; the main
+synthetic path generator uses the discrete probabilities \(p_i\) directly.
+
+### 3. Synthetic path construction
+
+`build_synthetic_path` in `append_tuples.py` implements the generator used by `main.py`:
+
+1. Compute price returns:
+
+   \[
+   r^{(P)}_t = rac{P_t - P_{t-1}}{\max(P_{t-1}, 10^{-12})}, \quad t \ge 1.
+   \]
+
+2. Form a “valid” probability vector \(p^{	ext{valid}}\) with zero mass at index 0
+   (so only indices \(i \ge 1\) are used for returns); if this collapses, fall back to uniform on
+   \(\{1, \dots, N-1\}\).
+
+3. Choose starting values:
+
+   - if `start_index is None`, start from the last observed values of each feature,
+   - otherwise from row `start_index`.
+
+4. Iterate for \(t = 1, \dots, T-1\):
+
+   - draw an index \(i_t \sim p^{	ext{valid}}\),
+   - set price return \(r_t = r^{(P)}_{i_t}\),
+   - if `use_price_only=True` (default in `main.py`), apply \(r_t\) to all features;
+   - otherwise, for each feature, compute its own return at index \(i_t\) and apply it.
+
+The result is a synthetic path that reuses historical returns according to the designed index
+distribution \(p_i\), starting from a real market state.
+
+---
+
+## Implementation Notes vs. Paper
+
+Compared to the paper-level description, this implementation includes several practical adjustments:
+
+- **CSV robustness**  
+  `load_series_from_csv`:
+  - parses and sorts by a detected date column,
+  - detects a price column heuristically,
+  - removes non-finite prices,
+  - shifts the series slightly upward if any values are ≤ 0 (to make `log` well-defined).
+
+- **Window selection**  
+  `make_valid_savgol_window` clamps and adjusts the requested Savitzky–Golay window so that:
+  - it is odd,
+  - strictly greater than `polyorder`,
+  - and ≤ \(N-1\).
+
+- **Path generator choice**  
+  The CLI currently uses:
+  - discrete sampling from \(p_i\) (no continuous sampling from the CDF),
+  - `use_price_only=True`,
+  - synthetic length \(T = N\) (same length as the input series).
+
+- **Advanced utilities exposed but not wired**  
+  `sampling.py` and `one_to_one.py` are provided as utilities for experimentation
+  (e.g., multinomial counts, monotone pairing of samples to nodes) but are not used by `main.py`.
+
+These design choices keep the code path simple, deterministic and easy to audit, while still exposing
+the components needed for more sophisticated experiments.
+
+---
+
+## Roadmap
+
+Potential extensions that fit naturally into the current design:
+
+- **Multi-feature evolution**  
+  Activate `use_price_only=False` in `main.py` and extend `payload` to include other features
+  (e.g. volume, indicators), each with its own returns.
+
+- **Alternative sampling schemes**  
+  Replace discrete sampling with:
+  - continuous sampling from `EquispacedPiecewiseConstantCDF`,
+  - stratified sampling,
+  - or 1–to–1 matching via `match_samples_to_nodes`.
+
+- **Diagnostics and evaluation**  
+  Add notebooks comparing original vs synthetic series in terms of:
+  - return distributions,
+  - autocorrelations,
+  - volatility clustering,
+  - regime duration statistics.
+
+---
+
+## License & Citation
+
+Specify your license in a `LICENSE` file (e.g. MIT, Apache-2.0) and reference it here.
+
+If you use this code or the underlying methodology in research or production, please cite:
+
+> *Distribution Maker: From Price-Driven Weights to Synthetic Market Paths* (2025).  
+> Authors, institution, working paper.
+
+(Replace with the final bibliographic details once available.)
