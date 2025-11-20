@@ -34,7 +34,7 @@ CSV (OHLCV) ──▶ log-price derivative ──▶ directional weights ──�
 - [Repository Structure](#repository-structure)
 - [Methodology (Short)](#methodology-short)
 - [Implementation Notes vs. Paper](#implementation-notes-vs-paper)
-- [Seed Validation(starting point)](#Seed-validation)
+- [Seeds Validation](#Seeds-validation)
 - [Roadmap](#roadmap)
 - [License & Citation](#license--citation)
 
@@ -325,16 +325,21 @@ the components needed for more sophisticated experiments.
 
 ---
 
-### Seed validation
+### Seeds validation
 
-To assess the stability of the generator with respect to randomness, we perform a simple **seed validation** experiment. For a fixed CSV and fixed hyperparameters, we generate many synthetic paths by varying only the pseudo-random seed. All paths start from the same historical point, and we:
+### Validation and diagnostics
 
-- compute time-wise empirical mean and standard deviation of the (shifted) price across runs,
-- inspect the ensemble plot of simulated paths (`<prefix>_paths.png`),
-- analyse the distribution of the terminal value \(X_T\) saved in `<prefix>_final_samples.csv`.
+The repository includes a small **validation pipeline** to check how the generator behaves across random seeds and how the synthetic series compare to the original data.
 
-This procedure verifies that the implementation uses the designed index distribution \(p_i\) in a numerically stable way and that the induced dispersion of synthetic paths remains controlled and consistent with the intended behaviour of the model.  
-The figure below shows one such seed validation experiment, where the original series (black) is overlaid with all simulated paths (coloured).
+For a fixed CSV and fixed hyperparameters, we generate many synthetic paths by varying only the pseudo-random seed. All paths start from the same historical point, so they are directly comparable. The script `validate_seeds.py` then produces:
+
+- **Path ensemble plot** (`<prefix>_paths.png`): the original series (black) overlaid with all simulated trajectories (coloured), to visually inspect the spread and shape of the synthetic paths.
+- **Time-wise statistics** (`<prefix>_moments.csv`): empirical mean and standard deviation of the shifted process \(X_t = P_t - P_0\) across runs, together with the fraction of synthetic paths above the original and the z-score of the original path relative to the ensemble.
+- **Terminal distribution** (`<prefix>_final_samples.csv`): samples of the terminal shifted value \(X_T\), with summary statistics (mean and standard deviation) reported in the console.
+- **Per-path dispersion** (`<prefix>_per_path_metrics.csv`): for each synthetic path, the terminal shifted value \(X_T\) and its realised volatility over the horizon.
+- **Return-level comparison** (`<prefix>_return_stats.csv`): side-by-side moments and quantiles of one-step returns for the original series and for all synthetic paths pooled together (mean, standard deviation, skewness, kurtosis, and the 1%, 5%, 50%, 95%, 99% quantiles).
+
+These diagnostics allow a direct quantitative comparison between the empirical distribution of historical returns and the distribution induced by the generator, as well as a visual check of the variability of synthetic price paths under different seeds.
 
 ![Seed validation example](validation_SPX_paths.png)
 
